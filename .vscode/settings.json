@@ -1,0 +1,25 @@
+{
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/**": true,
+        "**/.stack-work/**": true
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/bower_components": true,
+        "**/.stack-work/**": true
+    },
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "match": "\\.hs$",
+                "cmd": "stylish-haskell -i ${file}"
+            }
+        ]
+    },
+    "editor.autoIndent": false,
+    "languageServerHaskell.enableHIE": true,
+    "languageServerHaskell.hlintOn": false,
+    "haskell.ghcMod.executablePath": "/usr/bin/ghc-mod"
+}
