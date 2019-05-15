@@ -1,17 +1,21 @@
+{-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module CoffeeMachineTests (stateMachineTests) where
 
-import qualified CoffeeMachine as C
-import           Control.Lens (view)
+import qualified CoffeeMachine          as C
+import           Control.Lens           (view)
 import           Control.Monad.IO.Class (MonadIO)
-import           Data.Kind (Type)
-import           Hedgehog
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
-import           Test.Tasty (TestTree)
-import           Test.Tasty.Hedgehog (testProperty)
+import           Data.Kind              (Type)
+import           Hedgehog               (Callback (..), Command (..), Concrete,
+                                         HTraversable (..), MonadGen, MonadTest,
+                                         Symbolic, executeSequential, failure,
+                                         forAll, property, success)
+import qualified Hedgehog.Gen           as Gen
+import qualified Hedgehog.Range         as Range
+import           Test.Tasty             (TestTree)
+import           Test.Tasty.Hedgehog    (testProperty)
 
 data DrinkType = Coffee | HotChocolate | Tea
 newtype Model (v :: Type -> Type) = Model DrinkType
@@ -32,7 +36,7 @@ cSetDrinkCoffee mach = Command gen exec
   [ Update $ \_ _ _ -> Model Coffee
   , Ensure $ \_ _ _ drink -> case drink of
       C.Coffee{} -> success
-      _ -> failure
+      _          -> failure
   ]
   where
     gen :: Model Symbolic -> Maybe (g (SetDrinkCoffee Symbolic))
@@ -43,6 +47,13 @@ cSetDrinkCoffee mach = Command gen exec
       C.coffee mach
       view C.drinkSetting <$> C.peek mach
 
+data SetDrinkHotChocolate (v :: Type -> Type)
+  = SetDrinkHotChocolate deriving Show
+
+instance HTraversable SetDrinkHotChocolate where
+  htraverse _ _ = pure SetDrinkHotChocolate
+
+
 -- You will need to implement these two command generators. Do not
 -- copy and change cSetDrinkCoffee without first working through the
 -- types. Replace `undefined` with a typed hole and pay attention to
@@ -52,13 +63,42 @@ cSetDrinkHotChocolate
   :: forall g m. (MonadGen g, MonadTest m, MonadIO m)
   => C.Machine
   -> Command g m Model
-cSetDrinkHotChocolate = undefined
+cSetDrinkHotChocolate mach = Command gen exec
+  [ Update $ \_ _ _ -> Model HotChocolate
+  , Ensure $ \_ _ _ drink -> if drink == C.HotChocolate then success else failure
+  ]
+  where
+    gen :: Model Symbolic -> Maybe (g (SetDrinkHotChocolate Symbolic))
+    gen _ = Just $ pure SetDrinkHotChocolate
+
+    exec :: SetDrinkHotChocolate Concrete -> m C.Drink
+    exec _ = do
+      C.hotChocolate mach
+      view C.drinkSetting <$> C.peek mach
+
+
+data SetDrinkTea (v :: Type -> Type)
+  = SetDrinkTea deriving Show
+
+instance HTraversable SetDrinkTea where
+  htraverse _ _ = pure SetDrinkTea
+
 
 cSetDrinkTea
   :: forall g m. (MonadGen g, MonadTest m, MonadIO m)
   => C.Machine
   -> Command g m Model
-cSetDrinkTea = undefined
+cSetDrinkTea mach = Command gen exec
+  [ Update $ \_ _ _ -> Model Tea
+  , Ensure $ \_ _ _ drink -> case drink of
+      C.Tea{} -> success
+      _       -> failure
+  ]
+  where
+    gen _ = Just . pure $ SetDrinkTea
+    exec _ = do
+      C.tea mach
+      view C.drinkSetting <$> C.peek mach
 
 stateMachineTests :: TestTree
 stateMachineTests = testProperty "State Machine Tests" . property $ do
