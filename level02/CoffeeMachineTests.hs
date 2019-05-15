@@ -1,17 +1,19 @@
+{-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+
 module CoffeeMachineTests (stateMachineTests) where
 
-import qualified CoffeeMachine as C
-import           Control.Lens (view)
+import qualified CoffeeMachine          as C
+import           Control.Lens           (view, (&))
 import           Control.Monad.IO.Class (MonadIO)
-import           Data.Kind (Type)
+import           Data.Kind              (Type)
 import           Hedgehog
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
-import           Test.Tasty (TestTree)
-import           Test.Tasty.Hedgehog (testProperty)
+import qualified Hedgehog.Gen           as Gen
+import qualified Hedgehog.Range         as Range
+import           Test.Tasty             (TestTree)
+import           Test.Tasty.Hedgehog    (testProperty)
 
 data DrinkType
   = Coffee
@@ -28,81 +30,16 @@ data TakeMug (v :: Type -> Type) = TakeMug deriving Show
 -- takes the type of drink to select as an argument. Don't forget to
 -- add a HTraversable instance.
 
-data SetDrinkCoffee (v :: Type -> Type) = SetDrinkCoffee deriving Show
-data SetDrinkHotChocolate (v :: Type -> Type) = SetDrinkHotChocolate deriving Show
-data SetDrinkTea (v :: Type -> Type) = SetDrinkTea deriving Show
+data SetDrinkType (v :: Type -> Type) = SetDrinkType DrinkType deriving Show
+
+instance HTraversable SetDrinkType where
+  htraverse _ (SetDrinkType d) = pure $ SetDrinkType d
 
 instance HTraversable AddMug where
   htraverse _ _ = pure AddMug
 
 instance HTraversable TakeMug where
   htraverse _ _ = pure TakeMug
-
-instance HTraversable SetDrinkCoffee where
-  htraverse _ _ = pure SetDrinkCoffee
-
-instance HTraversable SetDrinkHotChocolate where
-  htraverse _ _ = pure SetDrinkHotChocolate
-
-instance HTraversable SetDrinkTea where
-  htraverse _ _ = pure SetDrinkTea
-
-cSetDrinkCoffee
-  :: forall g m. (MonadGen g, MonadTest m, MonadIO m)
-  => C.Machine
-  -> Command g m Model
-cSetDrinkCoffee mach = Command gen exec
-  [ Update $ \(Model _ hasMug) _ _ -> Model Coffee hasMug
-  , Ensure $ \_ _ _ drink -> case drink of
-      C.Coffee{} -> success
-      _ -> failure
-  ]
-  where
-    gen :: Model Symbolic -> Maybe (g (SetDrinkCoffee Symbolic))
-    gen _ = Just $ pure SetDrinkCoffee
-
-    exec :: SetDrinkCoffee Concrete -> m C.Drink
-    exec _ = do
-      C.coffee mach
-      view C.drinkSetting <$> C.peek mach
-
-cSetDrinkHotChocolate
-  :: forall g m. (MonadGen g, MonadTest m, MonadIO m)
-  => C.Machine
-  -> Command g m Model
-cSetDrinkHotChocolate mach = Command gen exec
-  [ Update $ \(Model _ hasMug) _ _ -> Model HotChocolate hasMug
-  , Ensure $ \_ _ _ drink -> case drink of
-      C.HotChocolate -> success
-      _ -> failure
-  ]
-  where
-    gen :: Model Symbolic -> Maybe (g (SetDrinkHotChocolate Symbolic))
-    gen _ = Just $ pure SetDrinkHotChocolate
-
-    exec :: SetDrinkHotChocolate Concrete -> m C.Drink
-    exec _ = do
-      C.hotChocolate mach
-      view C.drinkSetting <$> C.peek mach
-
-cSetDrinkTea
-  :: forall g m. (MonadGen g, MonadTest m, MonadIO m)
-  => C.Machine
-  -> Command g m Model
-cSetDrinkTea mach = Command gen exec
-  [ Update $ \(Model _ hasMug) _ _ -> Model Tea hasMug
-  , Ensure $ \_ _ _ drink -> case drink of
-      C.Tea{} -> success
-      _ -> failure
-  ]
-  where
-    gen :: Model Symbolic -> Maybe (g (SetDrinkTea Symbolic))
-    gen _ = Just $ pure SetDrinkTea
-
-    exec :: SetDrinkTea Concrete -> m C.Drink
-    exec _ = do
-      C.tea mach
-      view C.drinkSetting <$> C.peek mach
 
 -- Replace the three command definitions above with one cSetDrinkType
 -- command definition below, which will the SetDrinkType data type you
@@ -112,7 +49,24 @@ cSetDrinkType
   :: forall g m. (MonadGen g, MonadTest m, MonadIO m)
   => C.Machine
   -> Command g m Model
-cSetDrinkType = undefined
+cSetDrinkType mach = Command gen exec
+  [ Update $ \(Model _ hasMug) (SetDrinkType d) _ -> Model d hasMug
+  , Ensure $ \_ (Model d _) _ drink -> case (d, drink) of
+      (Coffee, C.Coffee{})             -> success
+      (Tea, C.Tea{})                   -> success
+      (HotChocolate, C.HotChocolate{}) -> success
+      _                                -> failure
+  ]
+  where
+    gen :: Model Symbolic -> Maybe (g (SetDrinkType Symbolic))
+    gen (Model d _)            = Just $ pure $ SetDrinkType d
+    exec :: SetDrinkType Concrete -> m C.Drink
+    exec (SetDrinkType d) = do
+      mach & case d of
+        Coffee       -> C.coffee
+        Tea          -> C.tea
+        HotChocolate -> C.hotChocolate
+      view C.drinkSetting <$> C.peek mach
 
 -- Fill in these command definitions to take and replace the mug in
 -- the machine. Use the TakeMug and AddMug types you defined
@@ -129,13 +83,28 @@ cTakeMug
   :: forall g m. (MonadGen g, MonadTest m, MonadIO m)
   => C.Machine
   -> Command g m Model
-cTakeMug = undefined
+cTakeMug mach = Command gen exec
+  [
+  ]
+  where
+    gen :: Model Symbolic -> Maybe (g (AddMug Symbolic))
+    gen _ = Nothing
+    exec :: AddMug Concrete -> m (Either C.MachineError ())
+    exec _ = C.addMug mach
 
 cAddMug
   :: forall g m. (MonadGen g, MonadTest m, MonadIO m)
   => C.Machine
   -> Command g m Model
-cAddMug = undefined
+cAddMug mach = Command gen exec
+  [
+  ]
+  where
+    gen :: Model Symbolic -> Maybe (g (TakeMug Symbolic))
+    gen _ = Nothing
+    exec :: TakeMug Concrete -> m (Either C.MachineError C.Mug)
+    exec _ = C.takeMug mach
+
 
 stateMachineTests :: TestTree
 stateMachineTests = testProperty "State Machine Tests" . property $ do
@@ -143,11 +112,7 @@ stateMachineTests = testProperty "State Machine Tests" . property $ do
 
   let initialModel = Model HotChocolate False
       commands = ($ mach) <$>
-        [ cSetDrinkCoffee
-        , cSetDrinkHotChocolate
-        , cSetDrinkTea
-        -- You will need to replace the above commands, or your
-        -- cSetDrinkType will never run.
+        [ cSetDrinkType
         , cTakeMug
         , cAddMug
         ]
